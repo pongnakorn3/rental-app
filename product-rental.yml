@@ -1,0 +1,30 @@
+version: '3.8'
+
+services: 
+  # ตั้งชื่อ Service ว่า db (Database)
+  db:
+    image: postgres:15-alpine
+    container_name: product_rental_db
+    restart: always
+    # กำหนด Username/Password สำหรับเข้าใช้ DB
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: 12345678
+      POSTGRES_DB: product_rental
+    # เปิดประตู Port 5432 ให้ข้างนอกคุยได้
+    ports:
+      - "5433:5432"
+    # (Optional) Map ข้อมูลออกมาเก็บไว้ข้างนอก Container กันข้อมูลหายเวลารีสตาร์ท
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: product_rental_pgadmin
+    restart: always
+    environment:
+      # อีเมลและรหัสผ่าน สำหรับ Login เข้าหน้าเว็บ pgAdmin (ตั้งอะไรก็ได้)
+      PGADMIN_DEFAULT_EMAIL: devproduct@gmail.com
+      PGADMIN_DEFAULT_PASSWORD: 12345678
+    ports:
+      - "8081:80"
