@@ -150,72 +150,60 @@ app.get('/register', (req, res) => {
 
 // [แก้ไข] Register ด้วย Email หรือ เบอร์โทร
 app.post('/register', async (req, res) => {
-    const { username, password } = req.body;
-    
+    // 1. รับค่าให้ตรงกับ <input name="..."> ในหน้าเว็บใหม่
+    const { username, password, name, tel } = req.body;
+
+    // --- ส่วนจัดการข้อมูล ---
     let email = null;
-    let phone = null;
+    let finalPhone = null;
 
-    // --- ส่วนตรวจสอบ Logic ใหม่ ---
-    if (username.includes('@')) {
-        // CASE 1: เป็นอีเมล (มี @)
-        email = username;
-    } else {
-        // CASE 2: ไม่มี @ (ระบบเข้าใจว่าเป็นเบอร์โทร)
-        
-        // ใช้ Regex เช็คว่า "เป็นตัวเลขล้วน" หรือไม่?
-        const isNumeric = /^[0-9]+$/.test(username);
-
-        if (isNumeric) {
-            // เช็คเพิ่มว่าต้องเป็น 10 หลัก (ถ้าต้องการ)
-            if (username.length !== 10) {
-                return res.send('<h3>เบอร์โทรศัพท์ต้องมี 10 หลัก</h3><a href="/register">กลับไปสมัครใหม่</a>');
-            }
-            phone = username;
-        } else {
-            // ถ้าไม่มี @ และไม่ใช่ตัวเลข (เช่นใส่ว่า "somchai") -> แจ้ง Error
-            return res.send(`
-                <h3>รูปแบบข้อมูลไม่ถูกต้อง!</h3>
-                <p>คุณกรอก: "${username}"</p>
-                <p>หากเป็นเบอร์โทรศัพท์ ต้องเป็นตัวเลขล้วนเท่านั้น</p>
-                <p>หากเป็นอีเมล ต้องมีเครื่องหมาย @</p>
-                <a href="/register">กลับไปสมัครใหม่</a>
-            `);
-        }
+    // แปลงเบอร์จาก +66 เป็น 0 (เพื่อให้เก็บใน Database แบบเดิมได้สวยๆ 10 หลัก)
+    // ถ้า tel มีค่า ส่งมาจาก OTP จะเป็น +668... -> แปลงเป็น 08...
+    if (tel) {
+        finalPhone = tel.replace('+66', '0');
     }
-    // -----------------------------
+
+    // (เผื่อไว้) ถ้า user กรอกอีเมลมาในช่อง username ให้เก็บลง email
+    if (username && username.includes('@')) {
+        email = username;
+    }
+    // -----------------------
 
     try {
-        // 1. เช็คก่อนว่าซ้ำไหม (เช็คทั้ง email และ phone)
+        // 2. เช็คว่าเบอร์นี้ หรือ Username นี้ มีคนใช้หรือยัง
+        // (เช็ค username ซ้ำด้วยก็ดีครับ กันคนตั้งชื่อ ID ซ้ำ)
         const userCheck = await pool.query(
-            'SELECT * FROM users WHERE email = $1 OR phone = $2', 
-            [email, phone]
+            'SELECT * FROM users WHERE phone = $1 OR email = $2', 
+            [finalPhone, email]
         );
         
         if (userCheck.rows.length > 0) {
-            return res.send('<h1>ข้อมูลนี้ (อีเมลหรือเบอร์โทร) มีผู้ใช้งานแล้ว!</h1><a href="/register">กลับไปสมัครใหม่</a>');
+            return res.send(`
+                <h3>เบอร์โทรศัพท์หรืออีเมลนี้ มีผู้ใช้งานแล้ว!</h3>
+                <a href="/login">เข้าสู่ระบบ</a> หรือ <a href="/register">ลองใหม่อีกครั้ง</a>
+            `);
         }
 
-        // 2. เข้ารหัสรหัสผ่าน
+        // 3. เข้ารหัสรหัสผ่าน
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // 3. บันทึกลง Database
+        // 4. บันทึกลง Database
+        // ใส่ชื่อ (name) ที่เขากรอกมา แทนคำว่า 'New User'
         await pool.query(
             `INSERT INTO users (email, phone, password, full_name, profile_picture) 
              VALUES ($1, $2, $3, $4, $5)`,
-            [email, phone, hashedPassword, 'New User', '/logo.png'] 
+            [email, finalPhone, hashedPassword, name, '/logo.png'] 
         );
 
-        // 4. สำเร็จ -> ไปหน้า Login
+        // 5. สำเร็จ -> ไปหน้า Login
         res.redirect('/login');
-
 
     } catch (err) {
         console.error(err);
         res.send('เกิดข้อผิดพลาดในการสมัครสมาชิก: ' + err.message);
     }
 });
-
 // --- Auth Routes (Social) ---
 
 // Google

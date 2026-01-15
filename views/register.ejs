@@ -3,46 +3,188 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>สมัครสมาชิก</title>
+    <title>ลงทะเบียนสมาชิก</title>
     <style>
-        body { font-family: 'Sarabun', sans-serif; display: flex; justify-content: center; padding-top: 50px; margin: 0; background-color: #f5f5f5; }
-        .container { background: white; padding: 30px; width: 100%; max-width: 350px; height: 100vh; box-sizing: border-box; }
-        
-        h2 { text-align: center; margin-bottom: 30px; }
-        
-        /* ปรับให้ Label ดูสวยขึ้น */
-        label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 14px; color: #333; }
-        
-        input { width: 100%; padding: 15px; margin-bottom: 15px; background: #d9d9d9; border: none; border-radius: 5px; box-sizing: border-box; font-size: 14px; }
-        
-        .btn { width: 100%; padding: 15px; background: #333; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; margin-top: 10px; font-weight: bold; }
-        .btn:hover { background-color: #555; }
-
-        .back-btn { font-size: 24px; text-decoration: none; color: black; display: block; margin-bottom: 20px; }
-        .text-center { text-align: center; margin-top: 20px; font-size: 14px; }
-        .small-text { font-size: 12px; color: #666; margin-top: -10px; margin-bottom: 20px; display: block;}
-        a { color: black; text-decoration: none; font-weight: bold; }
+        body { font-family: 'Sarabun', sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: #f4f4f4; margin: 0; }
+        .container { background: white; width: 100%; max-width: 400px; padding: 30px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: #333; margin-bottom: 20px; }
+        label { display: block; margin-bottom: 5px; color: #666; }
+        input { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; font-size: 16px; }
+        button { width: 100%; padding: 12px; background: #28a745; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; transition: background 0.3s; }
+        button:hover { background: #218838; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .hidden { display: none; }
+        .error { color: #dc3545; font-size: 14px; text-align: center; margin-top: 10px; }
+        .note { font-size: 12px; color: #888; margin-bottom: 10px; }
     </style>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div class="container">
-        <a href="/" class="back-btn"><</a>
-        <h2>สมัครสมาชิก</h2>
+
+<div class="container">
+    <h2>สมัครสมาชิก</h2>
+    
+    <div id="step-phone">
+        <label>เบอร์โทรศัพท์มือถือ</label>
+        <input type="tel" id="phoneNumber" placeholder="ตัวอย่าง 0812345678" maxlength="10">
+        <p class="note">*ระบบจะส่ง SMS เพื่อยืนยันตัวตน</p>
         
-        <form action="/register" method="POST">
-            <label>อีเมล หรือ เบอร์โทรศัพท์</label>
-            <input type="text" name="username" required placeholder="เช่น example@mail.com หรือ 0812345678">
-            
-            <label>รหัสผ่าน</label>
-            <input type="password" name="password" required minlength="8">
-            <span class="small-text">ต้องมีรหัสผ่านอย่างน้อย 8 ตัวอักษร</span>
+        <button id="btn-send-otp" onclick="sendOTP()">รับรหัส OTP</button>
+        <p id="status-msg-phone" class="error"></p>
+    </div>
 
-            <button type="submit" class="btn">สมัครสมาชิก</button>
-        </form>
-
-        <div class="text-center" style="margin-top: 50px;">
-            มีบัญชีอยู่แล้ว? <a href="/login">เข้าสู่ระบบ</a>
+    <div id="step-otp" class="hidden">
+        <label>รหัส OTP (6 หลัก)</label>
+        <input type="text" id="otpInput" placeholder="xxxxxx" maxlength="6" style="text-align: center; letter-spacing: 5px;">
+        <button onclick="verifyOTP()">ยืนยันรหัส</button>
+        <p id="status-msg-otp" class="error"></p>
+        <div style="text-align: center; margin-top: 15px;">
+             <a href="#" onclick="location.reload()" style="font-size: 14px; color: #007bff; text-decoration: none;">เปลี่ยนเบอร์โทรศัพท์</a>
         </div>
     </div>
+
+    <div id="step-info" class="hidden">
+        <h3 style="text-align: center; color: #28a745;">ยืนยันเบอร์สำเร็จ!</h3>
+        <label>ชื่อผู้ใช้งาน (Username)</label>
+        <input type="text" id="input-username" placeholder="ตั้งชื่อผู้ใช้" required>
+        
+        <label>รหัสผ่าน (Password)</label>
+        <input type="password" id="input-password" placeholder="ตั้งรหัสผ่าน" required>
+        
+        <label>ชื่อ-นามสกุล</label>
+        <input type="text" id="input-name" placeholder="ชื่อ นามสกุล" required>
+        
+        <button onclick="submitFinalRegister()">ลงทะเบียน</button>
+    </div>
+
+    <form id="registerForm" action="/register" method="POST" class="hidden">
+        <input type="text" name="username" id="final-username">
+        <input type="password" name="password" id="final-password">
+        <input type="text" name="name" id="final-name">
+        <input type="text" name="tel" id="final-tel">
+    </form>
+    
+    <div id="recaptcha-container"></div>
+
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getAuth, RecaptchaVerifier, signInWithPhoneNumber } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+    // Config ของคุณ (อันเดิม)
+    const firebaseConfig = {
+      apiKey: "AIzaSyCWy0taRyfAlL4KEWNQ6FGSi-b0dlLm2oE",
+      authDomain: "chao-18dcd.firebaseapp.com",
+      projectId: "chao-18dcd",
+      storageBucket: "chao-18dcd.firebasestorage.app",
+      messagingSenderId: "613851150580",
+      appId: "1:613851150580:web:d9c9682279118ebdbb86a1"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    auth.languageCode = 'th';
+
+    // --- 1. ตั้งค่า Invisible Recaptcha (แก้ใหม่) ---
+    // ผูกกับ div เปล่าๆ แทนที่จะผูกกับปุ่มโดยตรง
+    window.onload = function() {
+        window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+            'size': 'invisible'
+        });
+    }
+
+    // --- 2. ฟังก์ชันส่ง OTP ---
+    window.sendOTP = function() {
+        const btn = document.getElementById('btn-send-otp');
+        const statusMsg = document.getElementById('status-msg-phone');
+        
+        // รับค่าและแปลงเบอร์
+        let phoneNumber = document.getElementById('phoneNumber').value.trim();
+
+        if (!phoneNumber) {
+            statusMsg.innerText = "กรุณากรอกเบอร์โทรศัพท์";
+            return;
+        }
+
+        // แปลง 08x -> +668x
+        if (phoneNumber.startsWith('0')) {
+            phoneNumber = '+66' + phoneNumber.substring(1);
+        } else if (!phoneNumber.startsWith('+')) {
+            phoneNumber = '+66' + phoneNumber;
+        }
+
+        console.log("กำลังส่ง OTP ไปที่:", phoneNumber);
+        
+        // ล็อกปุ่มกันกดย้ำ
+        btn.disabled = true;
+        btn.innerText = "กำลังส่ง...";
+        statusMsg.innerText = "";
+        
+        const appVerifier = window.recaptchaVerifier;
+
+        signInWithPhoneNumber(auth, phoneNumber, appVerifier)
+            .then((confirmationResult) => {
+                window.confirmationResult = confirmationResult;
+                alert("✅ ส่งรหัส OTP แล้ว! กรุณาตรวจสอบ SMS");
+                
+                // เปลี่ยนหน้า
+                document.getElementById('step-phone').classList.add('hidden');
+                document.getElementById('step-otp').classList.remove('hidden');
+            }).catch((error) => {
+                console.error("Error sending OTP:", error);
+                
+                let msg = "เกิดข้อผิดพลาด: " + error.message;
+                if (error.code === 'auth/invalid-phone-number') msg = "เบอร์โทรศัพท์ไม่ถูกต้อง";
+                else if (error.code === 'auth/too-many-requests') msg = "ขอ OTP บ่อยเกินไป โปรดรอสักครู่";
+                else if (error.code === 'auth/quota-exceeded') msg = "โควต้าเต็ม (ลองใช้เบอร์ Test ใน Firebase)";
+
+                statusMsg.innerText = msg;
+                
+                // คืนค่าปุ่มให้กดใหม่ได้
+                btn.disabled = false;
+                btn.innerText = "รับรหัส OTP";
+
+                // Reset Recaptcha (สำคัญมาก ไม่งั้นกดรอบสองไม่ได้)
+                if(window.recaptchaVerifier) {
+                    window.recaptchaVerifier.clear();
+                    window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', { 'size': 'invisible' });
+                }
+            });
+    }
+
+    // --- 3. ฟังก์ชันยืนยัน OTP (เหมือนเดิม) ---
+    window.verifyOTP = function() {
+        const code = document.getElementById('otpInput').value;
+        const statusMsg = document.getElementById('status-msg-otp');
+
+        if (!code || code.length < 6) {
+            statusMsg.innerText = "กรุณากรอกรหัส 6 หลัก";
+            return;
+        }
+        
+        window.confirmationResult.confirm(code).then((result) => {
+            const user = result.user;
+            alert("ยืนยันเบอร์โทรศัพท์เรียบร้อย!");
+
+            document.getElementById('step-otp').classList.add('hidden');
+            document.getElementById('step-info').classList.remove('hidden');
+            document.getElementById('final-tel').value = user.phoneNumber;
+
+        }).catch((error) => {
+            console.log(error);
+            statusMsg.innerText = "รหัส OTP ไม่ถูกต้อง";
+        });
+    }
+
+    // --- 4. ฟังก์ชันส่งข้อมูลเข้า Server ---
+    window.submitFinalRegister = function() {
+        document.getElementById('final-username').value = document.getElementById('input-username').value;
+        document.getElementById('final-password').value = document.getElementById('input-password').value;
+        document.getElementById('final-name').value = document.getElementById('input-name').value;
+        document.getElementById('registerForm').submit();
+    }
+</script>
+
 </body>
 </html>
