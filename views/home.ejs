@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Product Rental</title>
+    <style>
+        body { font-family: 'Sarabun', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background-color: #f5f5f5; }
+        .container { background: white; padding: 40px; border-radius: 10px; width: 100%; max-width: 350px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        
+        /* --- [แก้ไข] สไตล์สำหรับโลโก้ใหม่ --- */
+        .logo-container {
+            margin-bottom: 20px;
+        }
+        .logo-img {
+            width: 180px; /* ปรับขนาดโลโก้ตามต้องการ */
+            height: auto;
+        }
+        /* -------------------------------- */
+
+        .btn { display: block; width: 100%; padding: 12px; margin: 10px 0; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; text-decoration: none; color: #333; box-sizing: border-box; }
+        .btn-grey { background-color: #d9d9d9; }
+        .btn-grey:hover { background-color: #c0c0c0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo-container">
+            <img src="/logo.png" alt="ร้านเช่าหน่อย Logo" class="logo-img">
+        </div>
+
+        <a href="/auth/google" class="btn btn-grey">ดำเนินการต่อด้วย Google</a>
+        <a href="/auth/facebook" class="btn btn-grey">ดำเนินการต่อด้วย Facebook</a>
+        <a href="/auth/line" class="btn btn-grey">ดำเนินการต่อด้วย Line</a>
+        
+        <br>
+        <a href="/register" class="btn btn-grey">สมัครสมาชิกด้วยอีเมล</a>
+        <a href="/login" class="btn btn-grey">เข้าสู่ระบบ</a>
+    </div>
+</body>
+</html>
