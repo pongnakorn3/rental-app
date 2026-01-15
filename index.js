@@ -4,19 +4,42 @@ const passport = require('passport');
 const session = require('express-session');
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs'); // 1. เพิ่มตัวจัดการไฟล์
 
-// Import Strategies ของทั้ง 3 ค่าย
+// Import Strategies
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const FacebookStrategy = require('passport-facebook').Strategy;
 const LineStrategy = require('passport-line-auth').Strategy;
 
 const app = express();
 
-// --- ตั้งค่า EJS และการรับค่าจากฟอร์ม ---
+// --- ตั้งค่า EJS และ Public Folder ---
 app.set('view engine', 'ejs');
 app.use(express.urlencoded({ extended: true })); 
 app.use(express.static('public')); 
 // ---------------------------------------
+
+// --- ตั้งค่าการอัปโหลดรูป (Multer) : แก้ไขใหม่ให้ชัวร์ที่สุด ---
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        // 2. ระบุที่อยู่แบบเจาะจง (Absolute Path) กันคอมพิวเตอร์งง
+        const uploadPath = path.join(__dirname, 'public/uploads');
+
+        // 3. ถ้าไม่มีโฟลเดอร์ ให้สร้างเดี๋ยวนี้เลย!
+        if (!fs.existsSync(uploadPath)) {
+            fs.mkdirSync(uploadPath, { recursive: true });
+        }
+
+        cb(null, uploadPath);
+    },
+    filename: (req, file, cb) => {
+        // ตั้งชื่อไฟล์: id-วันที่-นามสกุลไฟล์เดิม
+        cb(null, req.user.id + '-' + Date.now() + path.extname(file.originalname));
+    }
+});
+const upload = multer({ storage: storage });
 
 // 1. เชื่อมต่อ Database
 const pool = new Pool({
@@ -52,8 +75,9 @@ async function authUser(provider, profile, cb) {
             const email = (profile.emails && profile.emails[0]) ? profile.emails[0].value : null;
             const photo = (profile.photos && profile.photos[0]) ? profile.photos[0].value : null;
 
+            // เพิ่ม default kyc_status = 'unverified'
             const newUser = await pool.query(
-                `INSERT INTO users (${queryField}, email, full_name, profile_picture) VALUES ($1, $2, $3, $4) RETURNING *`,
+                `INSERT INTO users (${queryField}, email, full_name, profile_picture, kyc_status) VALUES ($1, $2, $3, $4, 'unverified') RETURNING *`,
                 [profile.id, email, profile.displayName, photo]
             );
             return cb(null, newUser.rows[0]);
@@ -65,67 +89,67 @@ async function authUser(provider, profile, cb) {
     }
 }
 
-// 3. ตั้งค่า Strategies (Google / Facebook / LINE)
+// 3. Setup Passport Strategies
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
     callbackURL: process.env.CALLBACK_URL
-  }, (accessToken, refreshToken, profile, cb) => authUser('google', profile, cb)
-));
-
+  }, (accessToken, refreshToken, profile, cb) => authUser('google', profile, cb)));
+  
 passport.use(new FacebookStrategy({
     clientID: process.env.FACEBOOK_APP_ID,
     clientSecret: process.env.FACEBOOK_APP_SECRET,
     callbackURL: process.env.FACEBOOK_CALLBACK_URL,
     profileFields: ['id', 'displayName', 'photos', 'email']
-  }, (accessToken, refreshToken, profile, cb) => authUser('facebook', profile, cb)
-));
-
+  }, (accessToken, refreshToken, profile, cb) => authUser('facebook', profile, cb)));
+  
 passport.use(new LineStrategy({
     channelID: process.env.LINE_CHANNEL_ID,
     channelSecret: process.env.LINE_CHANNEL_SECRET,
     callbackURL: process.env.LINE_CALLBACK_URL,
     scope: ['profile', 'openid', 'email'],
     botPrompt: 'normal'
-  }, (accessToken, refreshToken, profile, cb) => authUser('line', profile, cb)
-));
+  }, (accessToken, refreshToken, profile, cb) => authUser('line', profile, cb)));
 
 passport.serializeUser((user, done) => done(null, user));
 passport.deserializeUser((user, done) => done(null, user));
 
 // ==========================================
-// 4. Routes (หน้าเว็บ)
+// Middleware: ยามเฝ้าประตู (Check KYC)
+// ==========================================
+const checkKYC = (req, res, next) => {
+    // 1. ถ้ายังไม่ล็อกอิน -> ไปหน้า Login
+    if (!req.isAuthenticated()) return res.redirect('/login');
+
+    // 2. ถ้าสถานะเป็น 'verified' แล้ว -> ปล่อยผ่านไปได้เลย
+    if (req.user.kyc_status === 'verified') {
+        return next();
+    }
+
+    // 3. ถ้ายังไม่ผ่าน และกำลังจะไปหน้า /kyc-verify หรือ logout -> ปล่อยให้ไป
+    if (req.path === '/kyc-verify' || req.path === '/logout') {
+        return next();
+    }
+
+    // 4. นอกนั้น ดีดไปหน้ายืนยันตัวตนให้หมด
+    res.redirect('/kyc-verify');
+};
+
+// ==========================================
+// Routes
 // ==========================================
 
-app.get('/', (req, res) => {
-  res.render('home'); 
-});
+app.get('/', (req, res) => res.render('home'));
+app.get('/login', (req, res) => res.render('login'));
 
-app.get('/login', (req, res) => {
-  res.render('login');
-});
-
-// [แก้ไข] Login ด้วย Email หรือ เบอร์โทร
-app.post('/login', async (req, res) => {
-    // รับค่าเป็น username (อย่าลืมแก้ name="username" ในไฟล์ login.ejs)
-    const { username, password } = req.body; 
-    
+app.post('/login', async (req, res, next) => {
+    const { username, password } = req.body;
     try {
-        // ค้นหา User โดยเช็คทั้ง 2 ช่อง (email หรือ phone)
-        const result = await pool.query(
-            'SELECT * FROM users WHERE email = $1 OR phone = $1', 
-            [username]
-        );
-        
+        const result = await pool.query('SELECT * FROM users WHERE email = $1 OR phone = $1', [username]);
         if (result.rows.length > 0) {
             const user = result.rows[0];
+            if (!user.password) return res.send('กรุณาใช้ Social Login');
             
-            // ถ้าไม่มีรหัสผ่าน (พวก Social Login)
-            if (!user.password) {
-                return res.send('บัญชีนี้สมัครผ่าน Social Login กรุณาเข้าสู่ระบบด้วยปุ่ม Google/Facebook/Line');
-            }
-
-            // เช็ค Password
             const isMatch = await bcrypt.compare(password, user.password);
             if (isMatch) {
                 req.login(user, (err) => {
@@ -133,100 +157,90 @@ app.post('/login', async (req, res) => {
                     return res.redirect('/profile');
                 });
             } else {
-                res.send('รหัสผ่านไม่ถูกต้อง <a href="/login">ลองใหม่</a>');
+                res.send('รหัสผิด');
             }
         } else {
-            res.send('ไม่พบข้อมูลในระบบ (อีเมลหรือเบอร์โทรไม่ถูกต้อง) <a href="/register">สมัครสมาชิก</a>');
+            res.send('ไม่พบผู้ใช้');
         }
-    } catch (err) {
-        console.error(err);
-        res.send('เกิดข้อผิดพลาดในการเข้าสู่ระบบ');
-    }
+    } catch (err) { res.send('Error Login'); }
 });
 
-app.get('/register', (req, res) => {
-  res.render('register');
-});
+app.get('/register', (req, res) => res.render('register'));
 
-// [แก้ไข] Register ด้วย Email หรือ เบอร์โทร
 app.post('/register', async (req, res) => {
-    // 1. รับค่าให้ตรงกับ <input name="..."> ในหน้าเว็บใหม่
     const { username, password, name, tel } = req.body;
-
-    // --- ส่วนจัดการข้อมูล ---
     let email = null;
-    let finalPhone = null;
-
-    // แปลงเบอร์จาก +66 เป็น 0 (เพื่อให้เก็บใน Database แบบเดิมได้สวยๆ 10 หลัก)
-    // ถ้า tel มีค่า ส่งมาจาก OTP จะเป็น +668... -> แปลงเป็น 08...
-    if (tel) {
-        finalPhone = tel.replace('+66', '0');
-    }
-
-    // (เผื่อไว้) ถ้า user กรอกอีเมลมาในช่อง username ให้เก็บลง email
-    if (username && username.includes('@')) {
-        email = username;
-    }
-    // -----------------------
+    let finalPhone = tel ? tel.replace('+66', '0') : null;
+    if (username && username.includes('@')) email = username;
 
     try {
-        // 2. เช็คว่าเบอร์นี้ หรือ Username นี้ มีคนใช้หรือยัง
-        // (เช็ค username ซ้ำด้วยก็ดีครับ กันคนตั้งชื่อ ID ซ้ำ)
-        const userCheck = await pool.query(
-            'SELECT * FROM users WHERE phone = $1 OR email = $2', 
-            [finalPhone, email]
-        );
-        
-        if (userCheck.rows.length > 0) {
-            return res.send(`
-                <h3>เบอร์โทรศัพท์หรืออีเมลนี้ มีผู้ใช้งานแล้ว!</h3>
-                <a href="/login">เข้าสู่ระบบ</a> หรือ <a href="/register">ลองใหม่อีกครั้ง</a>
-            `);
-        }
+        const userCheck = await pool.query('SELECT * FROM users WHERE phone = $1 OR email = $2', [finalPhone, email]);
+        if (userCheck.rows.length > 0) return res.send('มีผู้ใช้นี้แล้ว');
 
-        // 3. เข้ารหัสรหัสผ่าน
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        // 4. บันทึกลง Database
-        // ใส่ชื่อ (name) ที่เขากรอกมา แทนคำว่า 'New User'
         await pool.query(
-            `INSERT INTO users (email, phone, password, full_name, profile_picture) 
-             VALUES ($1, $2, $3, $4, $5)`,
-            [email, finalPhone, hashedPassword, name, '/logo.png'] 
+            `INSERT INTO users (email, phone, password, full_name, profile_picture, kyc_status) 
+             VALUES ($1, $2, $3, $4, $5, 'unverified')`,
+            [email, finalPhone, hashedPassword, name, '/logo.png']
         );
-
-        // 5. สำเร็จ -> ไปหน้า Login
         res.redirect('/login');
-
-    } catch (err) {
-        console.error(err);
-        res.send('เกิดข้อผิดพลาดในการสมัครสมาชิก: ' + err.message);
-    }
+    } catch (err) { res.send('Error Register: ' + err.message); }
 });
-// --- Auth Routes (Social) ---
 
-// Google
+// --- Auth Social Routes ---
 app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
 app.get('/auth/google/callback', passport.authenticate('google', { failureRedirect: '/' }), (req, res) => res.redirect('/profile'));
 
-// Facebook
 app.get('/auth/facebook', passport.authenticate('facebook', { scope: ['email'] }));
 app.get('/auth/facebook/callback', passport.authenticate('facebook', { failureRedirect: '/' }), (req, res) => res.redirect('/profile'));
 
-// LINE
 app.get('/auth/line', passport.authenticate('line'));
 app.get('/auth/line/callback', passport.authenticate('line', { failureRedirect: '/' }), (req, res) => res.redirect('/profile'));
 
-// Profile Page
-app.get('/profile', (req, res) => {
-  if (!req.isAuthenticated()) return res.redirect('/');
-  
-  // โชว์เบอร์โทรด้วย (ถ้ามี)
-  const displayContact = req.user.email || req.user.phone || 'ไม่ระบุ';
+// ==========================================
+// หน้า KYC Verify (อัปโหลดรูป)
+// ==========================================
+app.get('/kyc-verify', (req, res) => {
+    if (!req.isAuthenticated()) return res.redirect('/login');
+    if (req.user.kyc_status === 'verified') return res.redirect('/profile');
 
+    res.render('kyc_verify', { 
+        user: req.user,
+        status: req.user.kyc_status 
+    });
+});
+
+app.post('/kyc-verify', upload.fields([{ name: 'id_card' }, { name: 'face_pair' }]), async (req, res) => {
+    try {
+        const idCardFile = req.files['id_card'] ? req.files['id_card'][0].filename : null;
+        const faceFile = req.files['face_pair'] ? req.files['face_pair'][0].filename : null;
+
+        if (!idCardFile || !faceFile) {
+            return res.send('กรุณาอัปโหลดรูปให้ครบทั้ง 2 รูป');
+        }
+
+        await pool.query(
+            `UPDATE users SET id_card_image = $1, face_image = $2, kyc_status = 'pending' WHERE id = $3`,
+            [idCardFile, faceFile, req.user.id]
+        );
+
+        res.redirect('/kyc-verify');
+    } catch (err) {
+        console.error(err);
+        res.send('เกิดข้อผิดพลาดในการอัปโหลด: ' + err.message);
+    }
+});
+
+// ==========================================
+// หน้า Profile (ใส่ checkKYC)
+// ==========================================
+app.get('/profile', checkKYC, (req, res) => {
+  const displayContact = req.user.email || req.user.phone || 'ไม่ระบุ';
   res.send(`
     <div style="text-align:center; margin-top:50px; font-family: sans-serif;">
+        <span style="color:green; font-weight:bold;">✅ ยืนยันตัวตนแล้ว</span>
         <h1>ยินดีต้อนรับคุณ ${req.user.full_name}</h1>
         <img src="${req.user.profile_picture}" width="150" style="border-radius:50%; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"><br>
         <p>Contact: ${displayContact}</p>
@@ -240,7 +254,4 @@ app.get('/logout', (req, res) => {
   req.logout(() => res.redirect('/'));
 });
 
-// Start Server
-app.listen(3000, () => {
-  console.log('Server running on http://localhost:3000');
-});
+app.listen(3000, () => console.log('Server running on http://localhost:3000'));
